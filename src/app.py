@@ -2,6 +2,11 @@ from typing import Optional
 
 from fastapi import FastAPI, Query, HTTPException
 from pydantic import BaseModel, Field
+import redis
+import logging
+
+r = redis.StrictRedis(host='localhost', port=6379, db=0, charset="utf-8", decode_responses=True)
+logger = logging.getLogger(__name__)
 
 
 class UserData(BaseModel):
@@ -19,7 +24,7 @@ class Calculyator(BaseModel):
     stepen: Optional[int] = Field(2, gt=0, description="Number should be more than 0")
 
 
-app = FastAPI()
+app = FastAPI(debug=True)
 
 
 @app.get("/")
@@ -49,12 +54,27 @@ def fibbonachi_calculate(n):
     if n in {0, 1}:
         return n
     result = fibbonachi_calculate(n - 1) + fibbonachi_calculate(n - 2)
+    r.set(n, result)
     return result
 
 
 @app.post("/fibbonachi")
 def fibbonachi(n: FibbonachiParams):
-    #  """Рекурсия"""
+    number = r.get(n.num)
+    logger.debug(f"Recive number {number}")
+    if number is not None:
+        return number
     result = fibbonachi_calculate(n.num)
+    r.set(n.num, result)
     return result
 
+
+@app.get("/fibbonachi/{number}")
+def get_fibbonachi(number):
+    result = r.get(number)
+    return result
+
+
+@app.post("/login")
+def user_info(us_info: UserData):
+    return us_info
