@@ -1,12 +1,14 @@
 from typing import Optional
+from setuptools import depends
+from functools import wraps
 
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Depends, Request, Query, HTTPException
 from pydantic import BaseModel, Field
 import redis
 import logging
 
-r = redis.StrictRedis(host='localhost', port=6379, db=0, charset="utf-8", decode_responses=True)
-logger = logging.getLogger(__name__)
+r = redis.StrictRedis(host='localhost', port=6379, db=1, charset="utf-8", decode_responses=True)
+logging.basicConfig(level=logging.DEBUG)
 
 
 class UserData(BaseModel):
@@ -24,7 +26,7 @@ class Calculyator(BaseModel):
     stepen: Optional[int] = Field(2, gt=0, description="Number should be more than 0")
 
 
-app = FastAPI(debug=True)
+app = FastAPI()
 
 
 @app.get("/")
@@ -54,18 +56,32 @@ def fibbonachi_calculate(n):
     if n in {0, 1}:
         return n
     result = fibbonachi_calculate(n - 1) + fibbonachi_calculate(n - 2)
-    r.set(n, result)
+    # r.set(n, result)
+    return result
+
+
+def value_in_redis(func):
+    @wraps(func)
+    async def check_in_redis(n: FibbonachiParams):
+        number = r.get(n.num)
+        print(n)
+        if number:
+            return number
+        else:
+            return await func(n)
+    return check_in_redis
+
+
+@value_in_redis
+async def fib_redis(n: FibbonachiParams):
+    result = fibbonachi_calculate(n.num)
+    r.set(n.num, result)
     return result
 
 
 @app.post("/fibbonachi")
-def fibbonachi(n: FibbonachiParams):
-    number = r.get(n.num)
-    logger.debug(f"Recive number {number}")
-    if number is not None:
-        return number
-    result = fibbonachi_calculate(n.num)
-    r.set(n.num, result)
+async def fibbonachi(n: FibbonachiParams) -> FibbonachiParams:
+    result = await fib_redis(n)
     return result
 
 
